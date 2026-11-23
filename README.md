@@ -16,7 +16,7 @@ Simply use the compiler of your choice and compile `main.c` and `chip8.c` with `
 clang main.c chip8.c -o chip8 -lraylib
 ```
 ### Windows
-todo
+You can install [Windows Subsystem for Linux](https://learn.microsoft.com/en-us/windows/wsl/install) and follow Linux build instructions.
 ## Resources Used
 - https://github.com/mattmikolay/chip-8/wiki/CHIP-8-Instruction-Set
 - https://chip8kb.gulrak.net/reference/variants/classic-chip-8
