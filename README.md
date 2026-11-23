@@ -1,6 +1,11 @@
 # CHIP-8 Interpreter
 ## Usage
-todo
+Run the program directly to be greeted with a window. From there, drop the ROM file onto the program.
+
+Or you can run the program from command line and supply the ROM file path as an argument like this:
+```
+./chip8 pong.ch8
+```
 ## Building
 ### Linux
 #### Required Dependencies
@@ -8,7 +13,7 @@ todo
 #### Building
 Simply use the compiler of your choice and compile `main.c` and `chip8.c` with `-lraylib` flag
 ```
-clang main.c chip8.c -o main -lraylib
+clang main.c chip8.c -o chip8 -lraylib
 ```
 ### Windows
 todo
