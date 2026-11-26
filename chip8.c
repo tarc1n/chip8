@@ -61,7 +61,7 @@ enum CHIP8_STATUS chip8_run_cycle(struct CHIP8* chip8)
 
     /*=== FETCH ===*/
     // CHIP-8 instructions are 16-bits wide. That means we have to combine
-    // every 2 bytes in the memory to make a single instruction (chip8->opcode).
+    // every 2 bytes in the memory to make a single instruction (opcode).
     chip8->opcode = (chip8->memory[chip8->PC] << 8 | chip8->memory[chip8->PC + 1]);
 
     // That also means incrementing by 2 per fetched instruction.
@@ -74,10 +74,10 @@ enum CHIP8_STATUS chip8_run_cycle(struct CHIP8* chip8)
     // CHIP-8 instruction format is as follows:
     // 0xCXYN
 
-    // C, the most significant nibble, determines the primary chip8->opcode class.
-    // N, the remaining nibble(s), supply operands or further chip8->opcode distinction.
+    // C, the most significant nibble, determines the primary opcode class.
+    // N, the remaining nibble(s), supply operands or further opcode distinction.
     // X and Y are placeholders for general purpose variable registers (V0 - VF).
-    // NOTE: Operands change based on the chip8->opcode class (e.g., 0x1NNN, 0x3XNN).
+    // NOTE: Operands change based on the opcode class (e.g., 0x1NNN, 0x3XNN).
 
     // We can store the operands like this for convenience:
     uint16_t NNN = chip8->opcode & 0x0FFF;        // Lower 12 bits / 3 nibbles
@@ -86,12 +86,12 @@ enum CHIP8_STATUS chip8_run_cycle(struct CHIP8* chip8)
     uint8_t  X   = (chip8->opcode & 0x0F00) >> 8; // Least significant nibble of upper byte
     uint8_t  Y   = (chip8->opcode & 0x00F0) >> 4; // Most significant nibble of lower byte
 
-    // First, we mask out the most significant nibble to determine the chip8->opcode,
-    // then we check if this chip8->opcode has additional operands.
+    // First, we mask out the most significant nibble to determine the opcode,
+    // then we check if this opcode has additional operands.
     switch (chip8->opcode & 0xF000)
     {
         case 0x0000:
-            // 0NNN has 3 distinct chip8->opcodes
+            // 0NNN has 3 distinct opcodes
             switch (NNN)
             {
                 case 0x0E0:
@@ -171,7 +171,7 @@ enum CHIP8_STATUS chip8_run_cycle(struct CHIP8* chip8)
             break;
 
         case 0x8000:
-            // 8NNN has 9 distinct chip8->opcodes
+            // 8NNN has 9 distinct opcodes
             switch (N)
             {
                 case 0x0:
@@ -307,7 +307,7 @@ enum CHIP8_STATUS chip8_run_cycle(struct CHIP8* chip8)
             break;
         }
         case 0xE000:
-            // ENNN has 2 distinct chip8->opcodes
+            // ENNN has 2 distinct opcodes
             switch (NN)
             {
                 case 0x9E:
@@ -335,7 +335,7 @@ enum CHIP8_STATUS chip8_run_cycle(struct CHIP8* chip8)
             break;
 
         case 0xF000:
-            // FNNN has 9 distinct chip8->opcodes
+            // FNNN has 9 distinct opcodes
             switch (NN)
             {
                 case 0x07:
