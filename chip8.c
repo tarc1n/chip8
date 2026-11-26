@@ -1,16 +1,10 @@
-#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
-#include <time.h>
 
 #include "chip8.h"
 
-// The reason we have to start reading the ROM after the first 512 bytes is that
-// historically CHIP-8 interpreter itself and other data lived in this region (0x000 - 0x1FF).
-// All programs assume this and start after first 512 bytes, at 0x200.
-#define MAX_ROM_SIZE (4096 - 512)
-
+/* Global constants & variables */
 // Font used in COSMAC VIP, 16 characters, 5 bytes each
 const uint8_t font[16 * 5] =
 {
@@ -33,43 +27,8 @@ const uint8_t font[16 * 5] =
 
 };
 
-/*=== Loading the ROM ===*/
-// Get the file name and the pointer of a CHIP8 struct so we can write it into CHIP-8's memory.
-int load_rom(const char* filename, struct CHIP8* chip8)
-{
-    // Try to open ROM
-    printf("INFO: Loading ROM file \"%s\"...\n", filename);
-    FILE* rom;                      // Create a pointer to a FILE struct
-    rom = fopen(filename, "rb");    // Open the binary file
-    if (rom == NULL)
-    {
-        printf("ERROR: Could not load file \"%s\"!\n", filename);
-        return -1;
-    }
-
-    // Find ROM size
-    fseek(rom, 0, SEEK_END);        // Move stream position indicator to end of file
-    long rom_size = ftell(rom);     // Save current position (so we know the file size)
-    fseek(rom, 0, SEEK_SET);        // Move stream position indicator back to beginning of file
-
-    if (rom_size <= (MAX_ROM_SIZE))
-    {
-        // Write ROM file into CHIP-8 memory
-        fread(&chip8->memory[0x200], 1, rom_size, rom);
-        printf("INFO: ROM file \"%s\" has been loaded into memory\n", filename);
-        fclose(rom);
-        return 0;
-    }
-    else
-    {
-        printf("ERROR: ROM file \"%s\" is bigger than %d bytes!\n", filename, MAX_ROM_SIZE);
-        fclose(rom);
-        return -1;
-    }
-}
-
-/*=== CHIP-8 initialization ===*/
-void chip8_init(struct CHIP8* chip8)
+/* CHIP-8 initialization */
+void chip8_init(struct CHIP8* chip8, uint32_t srand_seed)
 {
     // Zero out everything
     memset(chip8, 0, sizeof(*chip8));
@@ -77,51 +36,62 @@ void chip8_init(struct CHIP8* chip8)
     // Copy font to memory starting at address 0x000
     memcpy(&chip8->memory[0x000], font, sizeof(font));
 
+    // The reason we have to start reading the ROM after the first 512 bytes is that
+    // historically CHIP-8 interpreter itself and other data lived in this region (0x000 - 0x1FF).
+    // All programs assume this and start after first 512 bytes, at 0x200.
+
     // Set program counter to 0x200 (program start)
     chip8->PC = 0x200;
 
     // Seed RNG for CXNN instruction
-    srand(time(NULL));
+    srand(srand_seed);
 }
 
-/*=== CHIP-8 cycle emulation ===*/
-// Fetch the instruction from memory in our CHIP8 struct.
+/* CHIP-8 cycle emulation */
+// Fetch the instruction from memory in CHIP8 instance.
 // Then decode the instruction and finally execute.
-void chip8_run_cycle(struct CHIP8* chip8)
+enum CHIP8_STATUS chip8_run_cycle(struct CHIP8* chip8)
 {
+    // Out-of-bounds protection
+    if (chip8->PC >= 4095)
+    {
+        chip8->PC = 0x200;
+        return CHIP8_OUT_OF_BOUNDS;
+    }
+
     /*=== FETCH ===*/
     // CHIP-8 instructions are 16-bits wide. That means we have to combine
-    // every 2 bytes in the memory to make a single instruction (opcode).
-    uint16_t opcode = (chip8->memory[chip8->PC] << 8 | chip8->memory[chip8->PC + 1]);
+    // every 2 bytes in the memory to make a single instruction (chip8->opcode).
+    chip8->opcode = (chip8->memory[chip8->PC] << 8 | chip8->memory[chip8->PC + 1]);
 
     // That also means incrementing by 2 per fetched instruction.
     chip8->PC += 2;
 
-    /*=== DECODE and EXECUTE ===*/
+    /* DECODE and EXECUTE */
     // Resource below was used here for instruction set implementation.
     // https://github.com/mattmikolay/chip-8/wiki/CHIP-8-Instruction-Set
 
     // CHIP-8 instruction format is as follows:
     // 0xCXYN
 
-    // C, the most significant nibble, determines the primary opcode class.
-    // N, the remaining nibble(s), supply operands or further opcode distinction.
+    // C, the most significant nibble, determines the primary chip8->opcode class.
+    // N, the remaining nibble(s), supply operands or further chip8->opcode distinction.
     // X and Y are placeholders for general purpose variable registers (V0 - VF).
-    // NOTE: Operands change based on the opcode class (e.g., 0x1NNN, 0x3XNN).
+    // NOTE: Operands change based on the chip8->opcode class (e.g., 0x1NNN, 0x3XNN).
 
     // We can store the operands like this for convenience:
-    uint16_t NNN = opcode & 0x0FFF;        // Lower 12 bits / 3 nibbles
-    uint8_t  NN  = opcode & 0x00FF;        // Lower byte / 2 nibbles
-    uint8_t  N   = opcode & 0x000F;        // Least significant nibble
-    uint8_t  X   = (opcode & 0x0F00) >> 8; // Least significant nibble of upper byte
-    uint8_t  Y   = (opcode & 0x00F0) >> 4; // Most significant nibble of lower byte
+    uint16_t NNN = chip8->opcode & 0x0FFF;        // Lower 12 bits / 3 nibbles
+    uint8_t  NN  = chip8->opcode & 0x00FF;        // Lower byte / 2 nibbles
+    uint8_t  N   = chip8->opcode & 0x000F;        // Least significant nibble
+    uint8_t  X   = (chip8->opcode & 0x0F00) >> 8; // Least significant nibble of upper byte
+    uint8_t  Y   = (chip8->opcode & 0x00F0) >> 4; // Most significant nibble of lower byte
 
-    // First, we mask out the most significant nibble to determine the opcode,
-    // then we check if this opcode has additional operands.
-    switch (opcode & 0xF000)
+    // First, we mask out the most significant nibble to determine the chip8->opcode,
+    // then we check if this chip8->opcode has additional operands.
+    switch (chip8->opcode & 0xF000)
     {
         case 0x0000:
-            // 0NNN has 3 distinct opcodes
+            // 0NNN has 3 distinct chip8->opcodes
             switch (NNN)
             {
                 case 0x0E0:
@@ -133,14 +103,10 @@ void chip8_run_cycle(struct CHIP8* chip8)
                     // 0x00EE: Return from a subroutine
                     if (chip8->SP > 0)
                     {
-                        chip8->SP -= 1;
+                        chip8->SP--;
                         chip8->PC = chip8->stack[chip8->SP];
                     }
-                    else
-                    {
-                        printf("WARNING: Program tried to return from a non-existent subroutine!\n");
-                        printf("WARNING: Stack underflow: instruction 0x%04X at address 0x%04X\n", opcode, chip8->PC - 2);
-                    }
+                    else return CHIP8_STACK_UNDERFLOW;
                     break;
 
                 default:
@@ -163,14 +129,10 @@ void chip8_run_cycle(struct CHIP8* chip8)
             if (chip8->SP < 16)
             {
                 chip8->stack[chip8->SP] = chip8->PC;
-                chip8->SP += 1;
+                chip8->SP++;
                 chip8->PC = NNN;
             }
-            else
-            {
-                printf("WARNING: Program tried to exceed hard-coded call stack storage limit of 16!\n");
-                printf("WARNING: Stack overflow: instruction 0x%04X at address 0x%04X\n", opcode, chip8->PC - 2);
-            }
+            else return CHIP8_STACK_OVERFLOW;
             break;
 
         case 0x3000:
@@ -194,7 +156,6 @@ void chip8_run_cycle(struct CHIP8* chip8)
             }
             else
             {
-                printf("WARNING: Illegal instruction 0x%X at address 0x%X\n", opcode, chip8->PC - 2);
                 break;
             }
             break;
@@ -210,7 +171,7 @@ void chip8_run_cycle(struct CHIP8* chip8)
             break;
 
         case 0x8000:
-            // 8NNN has 9 distinct opcodes
+            // 8NNN has 9 distinct chip8->opcodes
             switch (N)
             {
                 case 0x0:
@@ -289,7 +250,7 @@ void chip8_run_cycle(struct CHIP8* chip8)
                 }
 
                 default:
-                    printf("WARNING: Illegal instruction 0x%X at address 0x%X\n", opcode, chip8->PC - 2);
+                    return CHIP8_ILLEGAL_INSTRUCTION;
                     break;
             }
             break;
@@ -301,11 +262,7 @@ void chip8_run_cycle(struct CHIP8* chip8)
             {
                 if (chip8->V[X] != chip8->V[Y]) chip8->PC += 2;
             }
-            else
-            {
-                printf("WARNING: Illegal instruction 0x%X at address 0x%X\n", opcode, chip8->PC - 2);
-                break;
-            }
+            else return CHIP8_ILLEGAL_INSTRUCTION;
             break;
 
         case 0xA000:
@@ -350,18 +307,14 @@ void chip8_run_cycle(struct CHIP8* chip8)
             break;
         }
         case 0xE000:
-            // ENNN has 2 distinct opcodes
+            // ENNN has 2 distinct chip8->opcodes
             switch (NN)
             {
                 case 0x9E:
                 {
                     // EX9E: Skip the following instruction
                     // if the key corresponding to the hex value currently stored in register VX is pressed
-                    if (chip8->V[X] > 0x0F)
-                    {
-                        printf("WARNING: Program tried to fetch a non-existent key! \n");
-                        printf("WARNING: Instruction 0x%X at address 0x%X\n", opcode, chip8->PC - 2);
-                    }
+                    if (chip8->V[X] > 0x0F) return CHIP8_NO_KEY;
                     uint16_t mask = 1U << (chip8->V[X] & 0x0F);
                     if (chip8->keypad & mask) chip8->PC += 2;
                     break;
@@ -370,23 +323,19 @@ void chip8_run_cycle(struct CHIP8* chip8)
                 {
                     // EXA1: Skip the following instruction
                     // if the key corresponding to the hex value currently stored in register VX is not pressed
-                    if (chip8->V[X] > 0x0F)
-                    {
-                        printf("WARNING: Program tried to fetch a non-existent key! \n");
-                        printf("WARNING: Instruction 0x%X at address 0x%X\n", opcode, chip8->PC - 2);
-                    }
+                    if (chip8->V[X] > 0x0F) return CHIP8_NO_KEY;
                     uint16_t mask = 1U << (chip8->V[X] & 0x0F);
                     if (!(chip8->keypad & mask)) chip8->PC += 2;
                     break;
                 }
                 default:
-                    printf("WARNING: Illegal instruction 0x%X at address 0x%X\n", opcode, chip8->PC - 2);
+                    return CHIP8_ILLEGAL_INSTRUCTION;
                     break;
             }
             break;
 
         case 0xF000:
-            // FNNN has 9 distinct opcodes
+            // FNNN has 9 distinct chip8->opcodes
             switch (NN)
             {
                 case 0x07:
@@ -427,11 +376,7 @@ void chip8_run_cycle(struct CHIP8* chip8)
 
                 case 0x29:
                     // FX29: Set I to the memory address of the sprite data corresponding to the hexadecimal digit stored in register VX
-                    if (chip8->V[X] > 0x0F)
-                    {
-                        printf("WARNING: Program tried to fetch a non-existent font character! \n");
-                        printf("WARNING: Instruction 0x%X at address 0x%X\n", opcode, chip8->PC - 2);
-                    }
+                    if (chip8->V[X] > 0x0F) return CHIP8_NO_FONT_CHAR;
                     chip8->I = (chip8->V[X] & 0x0F) * 5;
                     break;
 
@@ -472,11 +417,12 @@ void chip8_run_cycle(struct CHIP8* chip8)
                 }
                 default:
                 {
-                    printf("WARNING: Illegal instruction 0x%X at address 0x%X\n", opcode, chip8->PC - 2);
+                    return CHIP8_ILLEGAL_INSTRUCTION;
                     break;
                 }
             }
             break;
     }
 
+    return CHIP8_OK;
 }

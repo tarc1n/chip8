@@ -1,6 +1,22 @@
 #include <stdint.h>
 
-// CHIP-8 hardware
+/* Global defines and enums */
+#define CHIP8_PROG_START    0x200
+#define CHIP8_MAX_PROG_SIZE (4096 - 0x200)
+
+enum CHIP8_STATUS
+{
+    CHIP8_OK,
+    CHIP8_OUT_OF_BOUNDS,
+    CHIP8_STACK_UNDERFLOW,
+    CHIP8_STACK_OVERFLOW,
+    CHIP8_ILLEGAL_INSTRUCTION,
+    CHIP8_NO_KEY,
+    CHIP8_NO_FONT_CHAR
+};
+
+
+/* CHIP-8 hardware */
 struct CHIP8
 {
     // CPU
@@ -11,6 +27,7 @@ struct CHIP8
 
     // System memory
     uint8_t memory[4096];               // 4096 bytes of RAM
+    uint16_t opcode;
 
     // Call stack storage being an array with 16 entries is a
     // conventional choice, not from the original implementation.
@@ -27,7 +44,6 @@ struct CHIP8
     uint16_t keypad;                    // Keypad (16 keys)
 };
 
-// Function declarations
-int load_rom(const char* filename, struct CHIP8* chip8);
-void chip8_init(struct CHIP8* chip8);
-void chip8_run_cycle(struct CHIP8* chip8);
+/* Function declarations */
+void chip8_init(struct CHIP8* chip8, uint32_t srand_seed);
+enum CHIP8_STATUS chip8_run_cycle(struct CHIP8* chip8);
